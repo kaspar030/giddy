@@ -1,6 +1,4 @@
-use camino::Utf8PathBuf;
-
-use clap::{crate_version, Arg, ArgAction, Command, ValueHint};
+use clap::{crate_version, Arg, ArgAction, Command};
 //use clap_complete::engine::{ArgValueCandidates, SubcommandCandidates};
 
 pub fn clap() -> clap::Command {
@@ -36,5 +34,21 @@ pub fn clap() -> clap::Command {
                         .num_args(1..),
                 ),
         )
+        .subcommand(
+            Command::new("del")
+                .about("remove a dependency from this branch")
+                .arg(
+                    Arg::new("dependency")
+                        .required(true)
+                        .help("branch to remove from the dependencies of this branch")
+                        .num_args(1..),
+                ),
+        )
+        .subcommand(
+            Command::new("new")
+                .about("add a new branch based on the current branch")
+                .arg(Arg::new("name").help("name of the new branch").num_args(1)),
+        )
         .subcommand(Command::new("show").about("show git branch dependency status"))
+        .subcommand(Command::new("update").about("rebase git branch on it's dependencies"))
 }
