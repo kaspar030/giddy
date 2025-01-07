@@ -3,6 +3,7 @@ use indexmap::IndexMap;
 use petgraph::{
     acyclic::Acyclic,
     graph::{DiGraph, NodeIndex},
+    Direction::{self, Incoming, Outgoing},
 };
 
 use crate::git::Repo;
@@ -49,7 +50,7 @@ impl GraphRepo {
         })
     }
 
-    fn branch_id<T: AsRef<str>>(&self, branch: T) -> Result<&NodeIndex> {
+    pub fn branch_id<T: AsRef<str>>(&self, branch: T) -> Result<&NodeIndex> {
         let branch = branch.as_ref();
         self.branch_map
             .get(branch)
@@ -67,5 +68,34 @@ impl GraphRepo {
             })?;
 
         Ok(())
+    }
+
+    fn get_neighbors<T: AsRef<str>>(&self, branch: T, dir: Direction) -> Result<Vec<String>> {
+        let branch = branch.as_ref();
+        let mut neighbors = Vec::new();
+        for id in self.graph.neighbors_directed(*self.branch_id(branch)?, dir) {
+            neighbors.push(self.graph[id].clone());
+        }
+
+        Ok(neighbors)
+    }
+
+    pub fn get_dependencies<T: AsRef<str>>(&self, branch: T) -> Result<Vec<String>> {
+        self.get_neighbors(branch, Outgoing)
+    }
+
+    pub fn get_dependents<T: AsRef<str>>(&self, branch: T) -> Result<Vec<String>> {
+        self.get_neighbors(branch, Incoming)
+    }
+
+    pub fn reversed(&self) -> Self {
+        let branch_map = self.branch_map.clone();
+
+        let mut graph = self.graph.clone().into_inner();
+        graph.reverse();
+
+        let graph = Acyclic::try_from_graph(graph).unwrap();
+
+        Self { branch_map, graph }
     }
 }

@@ -50,5 +50,15 @@ pub fn clap() -> clap::Command {
                 .arg(Arg::new("name").help("name of the new branch").num_args(1)),
         )
         .subcommand(Command::new("show").about("show git branch dependency status"))
-        .subcommand(Command::new("update").about("rebase git branch on it's dependencies"))
+        .subcommand(
+            Command::new("update")
+                .about("rebase git branch on it's dependencies")
+                .arg(
+                    Arg::new("recursive")
+                        .help("also update dependencies")
+                        .short('r')
+                        .long("recursive")
+                        .action(ArgAction::SetTrue),
+                ),
+        )
 }

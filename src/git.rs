@@ -229,9 +229,9 @@ impl<'a> Branch<'a> {
         for dep in self.state.deps.iter() {
             let fork_point = self.fork_point(dep)?;
             if let Some(fork_point) = fork_point {
-                println!("fork point of {} on {} is {}", self.name(), dep, fork_point);
+                //println!("fork point of {} on {} is {}", self.name(), dep, fork_point);
                 let dep_head = self.repo.branch_head(dep)?;
-                println!("head of {dep} is {}", self.repo.branch_head(dep)?);
+                //println!("head of {dep} is {}", self.repo.branch_head(dep)?);
 
                 if dep_head != fork_point {
                     return Ok(true);
@@ -269,11 +269,10 @@ impl<'a> Branch<'a> {
         let dep_head = self.repo.branch_head(dep)?;
         if dep_head == fork_point {
             println!("branch {}: no update needed.", self.name());
-            return Ok(());
+        } else {
+            println!("rebasing branch `{}` on `{}`", self.name(), dep);
+            self.rebase_on(dep)?;
         }
-
-        self.rebase_on(dep)?;
-
         Ok(())
     }
 
