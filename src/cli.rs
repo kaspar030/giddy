@@ -49,7 +49,17 @@ pub fn clap() -> clap::Command {
                 .about("add a new branch based on the current branch")
                 .arg(Arg::new("name").help("name of the new branch").num_args(1)),
         )
-        .subcommand(Command::new("show").about("show git branch dependency status"))
+        .subcommand(
+            Command::new("show")
+                .about("show git branch dependency status")
+                .arg(
+                    Arg::new("tree")
+                        .help("show dependencies in tree form")
+                        .short('t')
+                        .long("tree")
+                        .action(ArgAction::SetTrue),
+                ),
+        )
         .subcommand(
             Command::new("update")
                 .about("rebase git branch on it's dependencies")
