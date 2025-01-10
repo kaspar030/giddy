@@ -126,45 +126,14 @@ fn handle_show(matches: &clap::ArgMatches) -> Result<()> {
         );
     }
 
-    {
-        use git::Branch;
-        use petgraph::visit::{Bfs, Dfs, DfsPostOrder};
+    if matches.get_flag("tree") {
+        use ptree::graph::print_graph;
 
         let graph = graph.reversed();
+        let branch_id = *graph.branch_id(default_branch.name())?;
+        let graph = graph.graph.into_inner();
 
-        println!("dfs:");
-        let mut dfs = Dfs::new(&graph.graph, *graph.branch_id(current_branch.name())?);
-        while let Some(nx) = dfs.next(&graph.graph) {
-            let branch_name = &graph.graph[nx];
-            let branch = Branch::new(branch_name, &repo);
-            println!(
-                "dep: `{}` needs update: {}",
-                graph.graph[nx],
-                branch.needs_update()?
-            );
-        }
-        println!("dfs postorder:");
-        let mut dfs = DfsPostOrder::new(&graph.graph, *graph.branch_id(current_branch.name())?);
-        while let Some(nx) = dfs.next(&graph.graph) {
-            let branch_name = &graph.graph[nx];
-            let branch = Branch::new(branch_name, &repo);
-            println!(
-                "dep: `{}` needs update: {}",
-                graph.graph[nx],
-                branch.needs_update()?
-            );
-        }
-        println!("bfs:");
-        let mut dfs = Bfs::new(&graph.graph, *graph.branch_id(current_branch.name())?);
-        while let Some(nx) = dfs.next(&graph.graph) {
-            let branch_name = &graph.graph[nx];
-            let branch = Branch::new(branch_name, &repo);
-            println!(
-                "dep: `{}` needs update: {}",
-                graph.graph[nx],
-                branch.needs_update()?
-            );
-        }
+        print_graph(&graph, branch_id)?;
     }
 
     Ok(())
