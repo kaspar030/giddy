@@ -8,8 +8,7 @@ anyhow = "1.0.95"
 camino = { version = "1.1.9", features = ["serde"] }
 clap = { version = "4.5.23", features = ["cargo", "unstable-ext"] }
 clap_complete = { version = "4.5.40", features = ["unstable-dynamic"] }
-#indexmap = { version = "2.7.0", features = ["serde"] }
-indexmap = { version = "~2.5.0", features = ["serde"] }
+indexmap = { version = "2.7.0", features = ["serde"] }
 itertools = "0.14.0"
 petgraph = "0.7.0"
 rand = "0.8.5"
