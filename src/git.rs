@@ -30,6 +30,7 @@ pub struct Branch<'a> {
 pub struct BranchState {
     pub deps: IndexSet<String>,
     pub pr: Option<u32>,
+    pub parent: Option<String>,
 }
 
 impl Repo {
