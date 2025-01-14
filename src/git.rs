@@ -30,7 +30,8 @@ pub struct Branch<'a> {
 pub struct BranchState {
     pub deps: IndexSet<String>,
     pub pr: Option<u32>,
-    pub parent: Option<String>,
+    pub base: Option<String>,
+    pub dirty: bool,
 }
 
 impl Repo {
@@ -122,7 +123,12 @@ impl Repo {
     }
 
     pub(crate) fn branch_default(&self) -> Result<Branch<'_>> {
-        Ok(Branch::new("main", self))
+        Ok(Branch::new(self.default_branch_name(), self))
+    }
+
+    pub(crate) fn default_branch_name(&self) -> String {
+        // TODO: get actual default branch name
+        String::from("main")
     }
 
     pub(crate) fn branch_create(&self, name: &str) -> Result<Branch<'_>> {
@@ -188,6 +194,9 @@ impl<'a> Branch<'a> {
         };
 
         res.load_state().ok();
+        if res.state.base.is_none() && res.name != repo.default_branch_name() {
+            res.state.base = Some(repo.default_branch_name());
+        }
         res
     }
 
@@ -223,7 +232,22 @@ impl<'a> Branch<'a> {
     }
 
     pub fn deps(&self) -> Vec<String> {
-        self.state.deps.iter().cloned().collect_vec()
+        if self.state.deps.is_empty() {
+            let default_branch_name = self.repo.default_branch_name();
+            if self.name == default_branch_name {
+                Vec::new()
+            } else {
+                vec![self.repo.default_branch_name()]
+            }
+        } else {
+            self.state.deps.iter().cloned().collect_vec()
+        }
+    }
+
+    pub fn only_default_deps(&self) -> bool {
+        self.state.deps.is_empty()
+            || (self.state.deps.len() == 1
+                && self.state.deps.first().unwrap() == &self.repo.default_branch_name())
     }
 
     pub fn needs_update(&self) -> Result<bool> {
@@ -237,20 +261,31 @@ impl<'a> Branch<'a> {
                 if dep_head != fork_point {
                     return Ok(true);
                 }
+            } else {
+                // no fork point found, probably the base branch or deps changed
+                return Ok(true);
             }
         }
 
         Ok(false)
     }
 
-    pub fn update(&self) -> Result<()> {
-        let deps = self.deps();
+    pub fn update(&mut self) -> Result<()> {
+        let mut deps = self.deps();
         if deps.is_empty() {
             println!(
                 "branch {} does not have deps, no update needed.",
                 self.name()
             );
             return Ok(());
+        }
+
+        if deps.len() > 1 {
+            deps.retain(|dep| dep != &self.repo.default_branch_name());
+            self.state
+                .deps
+                .shift_remove(&self.repo.default_branch_name());
+            self.save_state()?;
         }
 
         if deps.len() > 1 {
@@ -261,6 +296,22 @@ impl<'a> Branch<'a> {
         }
 
         let dep = deps.first().unwrap();
+        if let Some(previous) = self.state.base.as_ref().cloned() {
+            if dep != &previous {
+                println!(
+                    "branch `{}`: rebasing from `{}` onto `{}`...",
+                    self.name, previous, dep
+                );
+
+                // TODO: check if new base is dirty
+
+                self.rebase_onto(&previous, dep)?;
+                self.state.base = Some(dep.clone());
+                self.state.dirty = false;
+                self.save_state()?;
+                return Ok(());
+            }
+        }
 
         let fork_point = self.fork_point(dep)?.ok_or(anyhow!(
             "cannot determine fork point of {} with {dep}",
@@ -279,6 +330,12 @@ impl<'a> Branch<'a> {
 
     fn rebase_on(&self, dep: &str) -> Result<()> {
         self.repo.cmd_check(["rebase", dep, self.name()])?;
+        Ok(())
+    }
+
+    fn rebase_onto(&mut self, old: &str, new: &str) -> Result<()> {
+        self.repo
+            .cmd_check(["rebase", "--onto", new, old, self.name()])?;
         Ok(())
     }
 }

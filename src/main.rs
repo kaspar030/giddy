@@ -37,8 +37,16 @@ fn handle_add(matches: &clap::ArgMatches) -> Result<()> {
     let deps: Vec<&String> = matches.get_many("dependency").unwrap().collect();
     let repo = git::Repo::new();
     let mut current_branch = repo.branch_current()?;
+    let previous_deps = current_branch.state.deps.clone();
     let mut graph = repo.graph()?;
     for dep in deps {
+        if previous_deps.contains(dep) {
+            println!(
+                "branch `{}` already depends on `{dep}`",
+                current_branch.name()
+            );
+            continue;
+        }
         println!(
             "adding dependency `{dep}` to branch `{}`",
             current_branch.name()
@@ -104,7 +112,20 @@ fn handle_show(matches: &clap::ArgMatches) -> Result<()> {
     let default_branch = repo.branch_default()?;
 
     println!("git dir: {}", repo.git_dir());
-    println!("current branch: {}", current_branch.name());
+    println!(
+        "current branch: {} (parent: {}{})",
+        current_branch.name(),
+        current_branch
+            .state
+            .base
+            .as_ref()
+            .unwrap_or(&String::from("none")),
+        if current_branch.state.dirty {
+            " (dirty)"
+        } else {
+            ""
+        }
+    );
 
     println!("  needs update: {}", current_branch.needs_update()?);
     if !current_branch.state.deps.is_empty() {
@@ -113,20 +134,11 @@ fn handle_show(matches: &clap::ArgMatches) -> Result<()> {
             current_branch.state.deps.iter().join(", ")
         );
     }
+
     println!("default branch: {}", default_branch.name());
 
-    let graph = repo.graph()?;
-
-    for branch in repo.branches()? {
-        println!(
-            "branch `{}` deps: {:?} dependents: {:?}",
-            branch.name(),
-            graph.get_dependencies(branch.name())?,
-            graph.get_dependents(branch.name())?,
-        );
-    }
-
     if matches.get_flag("tree") {
+        let graph = repo.graph()?;
         use ptree::graph::print_graph;
 
         let graph = graph.reversed();
@@ -145,7 +157,6 @@ fn handle_update(matches: &clap::ArgMatches) -> Result<()> {
     let current_branch = repo.branch_current()?;
 
     if recursive {
-        println!("recursive");
         use git::Branch;
         use petgraph::visit::DfsPostOrder;
 
@@ -154,11 +165,11 @@ fn handle_update(matches: &clap::ArgMatches) -> Result<()> {
         let mut dfs = DfsPostOrder::new(&graph.graph, *graph.branch_id(current_branch.name())?);
         while let Some(nx) = dfs.next(&graph.graph) {
             let branch_name = &graph.graph[nx];
-            let branch = Branch::new(branch_name, &repo);
+            let mut branch = Branch::new(branch_name, &repo);
             branch.update()?
         }
     } else {
-        let current_branch = repo.branch_current()?;
+        let mut current_branch = repo.branch_current()?;
         current_branch.update()?;
     }
 
