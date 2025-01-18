@@ -156,6 +156,41 @@ impl Repo {
         Ok(fork_point)
     }
 
+    pub fn get_base_branch<T: AsRef<str>>(&self, branch: T) -> Result<String> {
+        let default_branch = self.default_branch_name();
+        let branch = branch.as_ref();
+        let branch_head = self.branch_head(branch)?;
+
+        if branch_head == self.branch_head(&default_branch)? {
+            return Ok(default_branch);
+        }
+
+        let fork_point = self.fork_point(branch, &default_branch)?.ok_or_else(||anyhow!("cannot determine fork point between `{branch}` and the default branch `{default_branch}`. has it been merged?"))?;
+
+        let mut log = self.cmd_output_vec([
+            "log",
+            "--format=%H %D",
+            "--decorate=full",
+            &format!("{fork_point}..{branch_head}"),
+        ])?;
+
+        for (_hash, branches) in log.iter_mut().filter_map(|line| line.split_once(' ')) {
+            let branch = branches
+                .split(", ")
+                .filter(|b| !b.starts_with("HEAD ->"))
+                .filter_map(|branch| branch.strip_prefix("refs/heads/"))
+                .filter(|b| b != &branch)
+                .take(1)
+                .next();
+
+            if let Some(branch) = branch {
+                return Ok(branch.to_string());
+            }
+        }
+
+        Ok(default_branch)
+    }
+
     pub fn branch_head<T: AsRef<str>>(&self, name: T) -> Result<String> {
         let name: &str = name.as_ref();
         let res = self.cmd_output(["rev-parse", name])?;
@@ -182,6 +217,51 @@ impl Repo {
 
         Ok(res.into())
     }
+
+    pub fn contains<T: AsRef<str>, S: AsRef<str>>(&self, branch: T, contains: S) -> Result<bool> {
+        let branch: &str = branch.as_ref();
+        let contains: &str = contains.as_ref();
+
+        let results = self
+            .cmd_output_vec([
+                "branch",
+                "--format=%(refname)",
+                "--contains",
+                contains,
+                branch,
+            ])
+            .with_context(|| format!("checking if `{branch}` contains `{contains}`"))?;
+
+        Ok(results
+            .first()
+            .is_some_and(|first| first == &format!("refs/heads/{branch}")))
+    }
+
+    pub fn merged<T: AsRef<str>, S: AsRef<str>>(&self, branch: T, has_merged: S) -> Result<bool> {
+        let branch: &str = branch.as_ref();
+        let has_merged: &str = has_merged.as_ref();
+
+        let results = self
+            .cmd_output_vec([
+                "branch",
+                "--format=%(refname)",
+                "--merged",
+                branch,
+                has_merged,
+            ])
+            .with_context(|| format!("checking if `{branch}` has merged `{has_merged}`"))?;
+
+        Ok(results
+            .first()
+            .is_some_and(|first| first == &format!("refs/heads/{has_merged}")))
+    }
+
+    pub fn equal<T: AsRef<str>, S: AsRef<str>>(&self, branch: T, other: S) -> Result<bool> {
+        let branch: &str = branch.as_ref();
+        let other: &str = other.as_ref();
+
+        Ok(self.branch_head(branch)? == self.branch_head(other)?)
+    }
 }
 
 impl<'a> Branch<'a> {
@@ -202,6 +282,24 @@ impl<'a> Branch<'a> {
 
     pub fn name(&'a self) -> &'a String {
         &self.name
+    }
+
+    pub fn head(&self) -> Result<String> {
+        self.repo.branch_head(&self.name)
+    }
+
+    pub fn equal<T: AsRef<str>>(&self, other: T) -> Result<bool> {
+        self.repo.equal(&self.name, other)
+    }
+
+    pub fn merged_into<T: AsRef<str>>(&self, other: T) -> Result<bool> {
+        let other = other.as_ref();
+        Ok(self.repo.merged(other, &self.name)?)
+    }
+
+    pub fn merged(&self) -> Result<bool> {
+        let base = self.state.base.as_ref().ok_or(anyhow!("no base branch"))?;
+        self.merged_into(&base)
     }
 
     pub fn fork_point<T: AsRef<str>>(&self, other: T) -> Result<Option<String>> {
@@ -313,18 +411,29 @@ impl<'a> Branch<'a> {
             }
         }
 
-        let fork_point = self.fork_point(dep)?.ok_or(anyhow!(
-            "cannot determine fork point of {} with {dep}",
-            self.name()
-        ))?;
+        let skip_update;
 
         let dep_head = self.repo.branch_head(dep)?;
-        if dep_head == fork_point {
+
+        if let Some(fork_point) = self.fork_point(dep)? {
+            skip_update = dep_head == fork_point;
+        } else {
+            // TODO: reflog
+
+            let branch_head = self.head()?;
+
+            skip_update = (branch_head == dep_head)
+                || self.repo.contains(dep, &self.name)?
+                || self.repo.merged(dep, &self.name)?;
+        }
+
+        if skip_update {
             println!("branch {}: no update needed.", self.name());
         } else {
             println!("rebasing branch `{}` on `{}`", self.name(), dep);
             self.rebase_on(dep)?;
         }
+
         Ok(())
     }
 

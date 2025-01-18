@@ -110,17 +110,18 @@ fn handle_show(matches: &clap::ArgMatches) -> Result<()> {
 
     let current_branch = repo.branch_current()?;
     let default_branch = repo.branch_default()?;
+    let base_branch = current_branch.state.base.as_ref();
 
     println!("git dir: {}", repo.git_dir());
     println!(
         "current branch: {} (parent: {}{})",
         current_branch.name(),
-        current_branch
-            .state
-            .base
-            .as_ref()
-            .unwrap_or(&String::from("none")),
-        if current_branch.state.dirty {
+        base_branch.unwrap_or(&String::from("none")),
+        if current_branch.merged()? {
+            " (merged)"
+        } else if current_branch.equal(default_branch.name())? {
+            " (equal)"
+        } else if current_branch.state.dirty {
             " (dirty)"
         } else {
             ""
@@ -146,6 +147,18 @@ fn handle_show(matches: &clap::ArgMatches) -> Result<()> {
         let graph = graph.graph.into_inner();
 
         print_graph(&graph, branch_id)?;
+    }
+
+    let merged = repo.merged(
+        current_branch.state.base.as_ref().unwrap(),
+        current_branch.name(),
+    )?;
+
+    if !merged {
+        println!(
+            "get_base_branch(): {}",
+            repo.get_base_branch(current_branch.name())?
+        );
     }
 
     Ok(())
