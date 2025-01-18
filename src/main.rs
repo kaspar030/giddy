@@ -117,7 +117,7 @@ fn handle_show(matches: &clap::ArgMatches) -> Result<()> {
         "current branch: {} (parent: {}{})",
         current_branch.name(),
         base_branch.unwrap_or(&String::from("none")),
-        if current_branch.merged()? {
+        if current_branch.merged().is_ok_and(|merged| merged) {
             " (merged)"
         } else if current_branch.equal(default_branch.name())? {
             " (equal)"
@@ -147,18 +147,6 @@ fn handle_show(matches: &clap::ArgMatches) -> Result<()> {
         let graph = graph.graph.into_inner();
 
         print_graph(&graph, branch_id)?;
-    }
-
-    let merged = repo.merged(
-        current_branch.state.base.as_ref().unwrap(),
-        current_branch.name(),
-    )?;
-
-    if !merged {
-        println!(
-            "get_base_branch(): {}",
-            repo.get_base_branch(current_branch.name())?
-        );
     }
 
     Ok(())
