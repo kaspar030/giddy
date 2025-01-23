@@ -37,7 +37,7 @@ pub struct BranchState {
 impl Repo {
     pub fn new() -> Repo {
         let git_dir = Repo::get_git_dir().unwrap();
-        std::fs::create_dir_all(git_dir.join("regit")).unwrap();
+        std::fs::create_dir_all(git_dir.join("giddy")).unwrap();
         Repo { git_dir }
     }
 
@@ -313,7 +313,7 @@ impl<'a> Branch<'a> {
 
     fn state_file(&self) -> Utf8PathBuf {
         let slug = self.name.replace("/", "__");
-        self.repo.git_dir().join("regit").join(slug)
+        self.repo.git_dir().join("giddy").join(slug)
     }
 
     pub fn load_state(&mut self) -> Result<()> {
@@ -414,9 +414,10 @@ impl<'a> Branch<'a> {
         let skip_update;
 
         let dep_head = self.repo.branch_head(dep)?;
+        let fork_point = self.fork_point(dep)?;
 
-        if let Some(fork_point) = self.fork_point(dep)? {
-            skip_update = dep_head == fork_point;
+        if let Some(fork_point) = &fork_point {
+            skip_update = &dep_head == fork_point;
         } else {
             // TODO: reflog
 
@@ -429,9 +430,15 @@ impl<'a> Branch<'a> {
 
         if skip_update {
             println!("branch {}: no update needed.", self.name());
+        } else if let Some(fork_point) = &fork_point {
+            println!("rebasing branch `{}` on `{dep}`...", self.name());
+            self.rebase_onto(fork_point, dep)?;
         } else {
-            println!("rebasing branch `{}` on `{}`", self.name(), dep);
-            self.rebase_on(dep)?;
+            return Err(anyhow!(
+                "unable to determine fork point between `{}` and `{}`!",
+                self.name(),
+                dep
+            ));
         }
 
         Ok(())
