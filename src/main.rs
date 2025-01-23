@@ -91,11 +91,11 @@ fn handle_new(matches: &clap::ArgMatches) -> Result<()> {
         format!("{}-{}", current_branch.name(), suffix)
     });
 
-    println!("regit: creating new branch `{name}`");
+    println!("giddy: creating new branch `{name}`");
     let mut new_branch = repo.branch_create(&name)?;
 
     println!(
-        "regit: adding `{}` as dependency of `{name}`",
+        "giddy: adding `{}` as dependency of `{name}`",
         current_branch.name(),
     );
     new_branch.state.deps.insert(current_branch.name().clone());
@@ -128,7 +128,8 @@ fn handle_show(matches: &clap::ArgMatches) -> Result<()> {
         }
     );
 
-    println!("  needs update: {}", current_branch.needs_update()?);
+    let needs_update = current_branch.needs_update()?;
+    let fork_point = println!("  needs update: {}", current_branch.needs_update()?);
     if !current_branch.state.deps.is_empty() {
         println!(
             "          deps: {}",
@@ -181,7 +182,7 @@ fn main() {
     let result = run();
     match result {
         Err(e) => {
-            eprintln!("regit: error: {e:#}");
+            eprintln!("giddy: error: {e:#}");
             std::process::exit(1);
         }
         Ok(code) => std::process::exit(code),

@@ -2,7 +2,7 @@ use clap::{crate_version, Arg, ArgAction, Command};
 //use clap_complete::engine::{ArgValueCandidates, SubcommandCandidates};
 
 pub fn clap() -> clap::Command {
-    Command::new("regit")
+    Command::new("giddy")
         .version(crate_version!())
         .author("Kaspar Schleiser <kaspar@schleiser.de>")
         .about("Tend your trees")
@@ -17,7 +17,7 @@ pub fn clap() -> clap::Command {
         )
         .arg(
             Arg::new("quiet")
-                .help("do not print regit messages")
+                .help("do not print giddy messages")
                 .short('q')
                 .long("quiet")
                 .global(true)
