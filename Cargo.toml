@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0.97"
+anyhow = "1.0.98"
 camino = { version = "1.1.9", features = ["serde"] }
 clap = { version = "4.5.36", features = ["cargo", "unstable-ext"] }
 clap_complete = { version = "4.5.47", features = ["unstable-dynamic"] }
