@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.98"
 camino = { version = "1.1.10", features = ["serde"] }
-clap = { version = "4.5.39", features = ["cargo", "unstable-ext"] }
+clap = { version = "4.5.40", features = ["cargo", "unstable-ext"] }
 clap_complete = { version = "4.5.54", features = ["unstable-dynamic"] }
 indexmap = { version = "2.9.0", features = ["serde"] }
 itertools = "0.14.0"
