@@ -31,6 +31,7 @@ pub struct BranchState {
     pub deps: IndexSet<String>,
     pub pr: Option<u32>,
     pub base: Option<String>,
+    pub base_commit: Option<String>,
     pub dirty: bool,
 }
 
@@ -105,7 +106,7 @@ impl Repo {
         let name = self.cmd_output(["branch", "--show-current"])?;
         let name = name.trim();
 
-        Ok(Branch::new(name, self))
+        Branch::new(name, self)
     }
 
     pub fn branch_names(&self) -> Result<Vec<String>> {
@@ -116,14 +117,14 @@ impl Repo {
     pub fn branches(&self) -> Result<Vec<Branch<'_>>> {
         let mut res = Vec::new();
         for name in self.branch_names()?.drain(..) {
-            res.push(Branch::new(name, self));
+            res.push(Branch::new(name, self)?);
         }
 
         Ok(res)
     }
 
     pub(crate) fn branch_default(&self) -> Result<Branch<'_>> {
-        Ok(Branch::new(self.default_branch_name(), self))
+        Branch::new(self.default_branch_name(), self)
     }
 
     pub(crate) fn default_branch_name(&self) -> String {
@@ -134,7 +135,7 @@ impl Repo {
     pub(crate) fn branch_create(&self, name: &str) -> Result<Branch<'_>> {
         self.cmd_check(["switch", "--create", name])?
             .true_or(anyhow!("creating branch failed"))?;
-        Ok(Branch::new(name, self))
+        Branch::new_with_base(name, self.branch_current()?.name(), self)
     }
 
     pub fn fork_point<T: AsRef<str>, S: AsRef<str>>(
@@ -265,7 +266,25 @@ impl Repo {
 }
 
 impl<'a> Branch<'a> {
-    pub fn new<T: AsRef<str>>(name: T, repo: &'a Repo) -> Self {
+    pub fn new_with_base<T: AsRef<str>, S: AsRef<str>>(
+        name: T,
+        base: S,
+        repo: &'a Repo,
+    ) -> Result<Self> {
+        let name = name.as_ref().to_string();
+        let base = base.as_ref().to_string();
+        let mut res = Self {
+            name,
+            repo,
+            state: Default::default(),
+        };
+
+        res.state.base_commit = Some(repo.branch_head(&base)?);
+        res.state.base = Some(base);
+        Ok(res)
+    }
+
+    pub fn new<T: AsRef<str>>(name: T, repo: &'a Repo) -> Result<Self> {
         let name = name.as_ref().to_string();
         let mut res = Self {
             name,
@@ -277,7 +296,15 @@ impl<'a> Branch<'a> {
         if res.state.base.is_none() && res.name != repo.default_branch_name() {
             res.state.base = Some(repo.default_branch_name());
         }
-        res
+        if res.state.base_commit.is_none() {
+            if let Some(ref base) = res.state.base {
+                let base_head = repo.branch_head(base)?;
+                if res.contains(&base_head)? {
+                    res.state.base_commit = Some(base_head);
+                }
+            }
+        }
+        Ok(res)
     }
 
     pub fn name(&'a self) -> &'a String {
@@ -294,12 +321,17 @@ impl<'a> Branch<'a> {
 
     pub fn merged_into<T: AsRef<str>>(&self, other: T) -> Result<bool> {
         let other = other.as_ref();
-        Ok(self.repo.merged(other, &self.name)?)
+        self.repo.merged(other, &self.name)
     }
 
     pub fn merged(&self) -> Result<bool> {
         let base = self.state.base.as_ref().ok_or(anyhow!("no base branch"))?;
-        self.merged_into(&base)
+        self.merged_into(base)
+    }
+
+    pub fn contains<T: AsRef<str>>(&self, other: T) -> Result<bool> {
+        let other = other.as_ref();
+        self.repo.contains(&self.name, other)
     }
 
     pub fn fork_point<T: AsRef<str>>(&self, other: T) -> Result<Option<String>> {
@@ -318,7 +350,8 @@ impl<'a> Branch<'a> {
 
     pub fn load_state(&mut self) -> Result<()> {
         let state_file = self.state_file();
-        let state: BranchState = read_from_file(state_file)?;
+        let state: BranchState = read_from_file(state_file)
+            .with_context(|| anyhow!("reading state file for branch `{}`", self.name))?;
         self.state = state;
         Ok(())
     }
@@ -401,38 +434,30 @@ impl<'a> Branch<'a> {
                     self.name, previous, dep
                 );
 
-                // TODO: check if new base is dirty
+                let previous = self.state.base_commit.as_ref().unwrap_or(&previous).clone();
 
                 self.rebase_onto(&previous, dep)?;
                 self.state.base = Some(dep.clone());
+                self.state.base_commit = Some(self.repo.branch_head(dep)?);
                 self.state.dirty = false;
                 self.save_state()?;
+
                 return Ok(());
             }
         }
 
-        let skip_update;
-
         let dep_head = self.repo.branch_head(dep)?;
-        let fork_point = self.fork_point(dep)?;
+        let branch_head = self.head()?;
 
-        if let Some(fork_point) = &fork_point {
-            skip_update = &dep_head == fork_point;
-        } else {
-            // TODO: reflog
-
-            let branch_head = self.head()?;
-
-            skip_update = (branch_head == dep_head)
-                || self.repo.contains(dep, &self.name)?
-                || self.repo.merged(dep, &self.name)?;
-        }
+        let skip_update = (branch_head == dep_head)
+            || self.repo.contains(dep, &self.name)?
+            || self.repo.merged(dep, &self.name)?;
 
         if skip_update {
             println!("branch {}: no update needed.", self.name());
-        } else if let Some(fork_point) = &fork_point {
+        } else if let Some(old_base) = self.state.base_commit.as_ref().cloned() {
             println!("rebasing branch `{}` on `{dep}`...", self.name());
-            self.rebase_onto(fork_point, dep)?;
+            self.rebase_onto(&old_base, dep)?;
         } else {
             return Err(anyhow!(
                 "unable to determine fork point between `{}` and `{}`!",

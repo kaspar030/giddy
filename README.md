@@ -1,3 +1,7 @@
+# NOTE
+
+I'll not work on this anymore, jujutsu does what I need.
+
 # About
 
 `giddy` is my take on the [stacked PR workflow][stacked-prs].

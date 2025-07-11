@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Context, Result};
 use itertools::Itertools;
 
 mod cli;
@@ -99,7 +99,9 @@ fn handle_new(matches: &clap::ArgMatches) -> Result<()> {
         current_branch.name(),
     );
     new_branch.state.deps.insert(current_branch.name().clone());
-    new_branch.save_state()?;
+    new_branch
+        .save_state()
+        .with_context(|| anyhow!("saving state for branch `{}`", new_branch.name()))?;
 
     Ok(())
 }
@@ -128,8 +130,7 @@ fn handle_show(matches: &clap::ArgMatches) -> Result<()> {
         }
     );
 
-    let needs_update = current_branch.needs_update()?;
-    let fork_point = println!("  needs update: {}", current_branch.needs_update()?);
+    println!("  needs update: {}", current_branch.needs_update()?);
     if !current_branch.state.deps.is_empty() {
         println!(
             "          deps: {}",
@@ -167,7 +168,7 @@ fn handle_update(matches: &clap::ArgMatches) -> Result<()> {
         let mut dfs = DfsPostOrder::new(&graph.graph, *graph.branch_id(current_branch.name())?);
         while let Some(nx) = dfs.next(&graph.graph) {
             let branch_name = &graph.graph[nx];
-            let mut branch = Branch::new(branch_name, &repo);
+            let mut branch = Branch::new(branch_name, &repo)?;
             branch.update()?
         }
     } else {
